@@ -1,7 +1,7 @@
-package client
+package main
 
 import (
-	ionmqtt "github.com/ION-Smart/ion.mqtt"
+	ionmqtt "github.com/ION-Smart/ion.mqtt/pkg/ionmqtt"
 	"log"
 )
 
