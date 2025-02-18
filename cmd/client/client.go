@@ -1,11 +1,17 @@
 package main
 
 import (
-	ionmqtt "github.com/ION-Smart/ion.mqtt/pkg/ionmqtt"
+	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	ionmqtt "github.com/ION-Smart/ion.mqtt/pkg/ionmqtt"
 )
 
-func client() {
+func main() {
 	broker := "tcp://127.0.0.1:1883"
 	user := ""
 	password := ""
@@ -17,13 +23,27 @@ func client() {
 
 	choke := make(chan [2]string)
 
-	client, err := ionmqtt.connectToBroker(broker, user, password, id, store, cleansess, choke)
+	client, err := ionmqtt.ConnectToBroker(broker, user, password, id, store, cleansess, choke)
 
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
-	ionmqtt.publishTopic(client, "crowdest", qos, choke)
-	ionmqtt.publishTopic(client, "securt", qos, choke)
+	go ionmqtt.ListenTopic(client, "crowdest", qos, choke)
+	go ionmqtt.ListenTopic(client, "securt", qos, choke)
+
+	go forever()
+
+	quitChannel := make(chan os.Signal, 1)
+	signal.Notify(quitChannel, syscall.SIGINT, syscall.SIGTERM)
+	<-quitChannel
+	//time for cleanup before exit
+	fmt.Println("Adios!")
+}
+
+func forever() {
+	for {
+		time.Sleep(time.Second)
+	}
 }

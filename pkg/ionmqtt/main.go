@@ -51,11 +51,11 @@ func ConnectToBroker(broker, user, password, id, store string, cleansess bool, c
 		}
 	}
 
+	fmt.Printf("Connected to %v\n", broker)
 	return client, nil
 }
 
 func ListenTopic(client MQTT.Client, topic string, qos int, choke chan [2]string) {
-	// Connect, Subscribe, Publish etc..
 	if topic == "" {
 		fmt.Println("Invalid setting for -topic, must not be empty")
 		return
