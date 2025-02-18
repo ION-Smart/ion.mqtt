@@ -1,4 +1,4 @@
-module ion.mqtt
+module github.com/ION-Smart/ion.mqtt
 
 go 1.24.0
 
