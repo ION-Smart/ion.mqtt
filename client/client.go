@@ -1,7 +1,7 @@
 package client
 
 import (
-	"../ion.mqtt"
+	ionmqtt "github.com/ION-Smart/ion.mqtt"
 	"log"
 )
 
@@ -17,13 +17,13 @@ func client() {
 
 	choke := make(chan [2]string)
 
-	client, err := connectToBroker(broker, user, password, id, store, cleansess, choke)
+	client, err := ionmqtt.connectToBroker(broker, user, password, id, store, cleansess, choke)
 
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
-	publishTopic(client, "crowdest", qos, choke)
-	publishTopic(client, "securt", qos, choke)
+	ionmqtt.publishTopic(client, "crowdest", qos, choke)
+	ionmqtt.publishTopic(client, "securt", qos, choke)
 }

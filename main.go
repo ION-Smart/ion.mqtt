@@ -1,4 +1,4 @@
-package main
+package ion_mqtt
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
-func main() {
+func logs() {
 	MQTT.ERROR = log.New(os.Stdout, "[ERROR] ", 0)
 	MQTT.CRITICAL = log.New(os.Stdout, "[CRIT] ", 0)
 	MQTT.WARN = log.New(os.Stdout, "[WARN]  ", 0)
