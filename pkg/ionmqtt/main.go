@@ -73,7 +73,7 @@ func ListenTopic(client MQTT.Client, topic string, qos int, choke chan [2]string
 	}
 }
 
-func PublishTopic(client MQTT.Client, topic string, qos int, choke chan [2]string) {
+func PublishTopic(client MQTT.Client, topic, payload string, qos int) {
 	// Connect, Subscribe, Publish etc..
 	if topic == "" {
 		fmt.Println("Invalid setting for -topic, must not be empty")
@@ -81,13 +81,9 @@ func PublishTopic(client MQTT.Client, topic string, qos int, choke chan [2]strin
 	}
 
 	fmt.Printf("\ttopic:     %s\n", topic)
+	fmt.Printf("\tpayload:     %s\n", payload)
 
-	if token := client.Subscribe(topic, byte(qos), nil); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-	}
-
-	for {
-		incoming := <-choke
-		fmt.Printf("Received topic: %s message: %s\n", incoming[0], incoming[1])
-	}
+	fmt.Println("---- doing publish ----")
+	token := client.Publish(topic, byte(qos), false, payload)
+	token.Wait()
 }

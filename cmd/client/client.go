@@ -15,7 +15,7 @@ func main() {
 	broker := "tcp://127.0.0.1:1883"
 	user := ""
 	password := ""
-	id := "testgoid"
+	id := "clientid"
 	store := ":memory:" // The Store Directory (default use memory store)
 
 	cleansess := false
