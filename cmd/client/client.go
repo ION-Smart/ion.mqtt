@@ -14,8 +14,8 @@ import (
 
 func main() {
 	broker := flag.String("broker", "tcp://test.mosquitto.org:1883", "Broker URI. ex: tcp://10.10.1.1:1883")
-	user := ""
-	password := ""
+	user := flag.String("user", "", "Broker username for authentication")
+	password := flag.String("password", "", "Broker password for authentication")
 	id := "clientid"
 	store := ":memory:" // The Store Directory (default use memory store)
 
@@ -26,7 +26,7 @@ func main() {
 
 	flag.Parse()
 
-	client, err := ionmqtt.ConnectToBroker(*broker, user, password, id, store, cleansess, choke)
+	client, err := ionmqtt.ConnectToBroker(*broker, *user, *password, id, store, cleansess, choke)
 
 	if err != nil {
 		log.Fatal(err)
