@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -12,7 +13,7 @@ import (
 )
 
 func main() {
-	broker := "tcp://127.0.0.1:1883"
+	broker := flag.String("broker", "tcp://test.mosquitto.org:1883", "Broker URI. ex: tcp://10.10.1.1:1883")
 	user := ""
 	password := ""
 	id := "clientid"
@@ -23,7 +24,9 @@ func main() {
 
 	choke := make(chan [2]string)
 
-	client, err := ionmqtt.ConnectToBroker(broker, user, password, id, store, cleansess, choke)
+	flag.Parse()
+
+	client, err := ionmqtt.ConnectToBroker(*broker, user, password, id, store, cleansess, choke)
 
 	if err != nil {
 		log.Fatal(err)

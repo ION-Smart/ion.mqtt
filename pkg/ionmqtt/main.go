@@ -1,6 +1,7 @@
 package ionmqtt
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -69,7 +70,16 @@ func ListenTopic(client MQTT.Client, topic string, qos int, choke chan [2]string
 
 	for {
 		incoming := <-choke
-		fmt.Printf("Received topic: %s message: %s\n", incoming[0], incoming[1])
+
+		topicRecieved := incoming[0]
+		messageRecieved := incoming[1]
+
+		marshaled, err := json.MarshalIndent(messageRecieved, "", "   ")
+		if err != nil {
+			log.Fatalf("marshaling error: %s\n", err)
+		}
+		fmt.Printf("Received topic: %s \n", topicRecieved)
+		fmt.Println("message: ", string(marshaled))
 	}
 }
 
