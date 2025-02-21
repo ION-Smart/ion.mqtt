@@ -1,7 +1,6 @@
 package ionmqtt
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -56,7 +55,13 @@ func ConnectToBroker(broker, user, password, id, store string, cleansess bool, c
 	return client, nil
 }
 
-func ListenTopic(client MQTT.Client, topic string, qos int, choke chan [2]string) {
+func ListenTopic(
+	client MQTT.Client,
+	topic string,
+	qos int,
+	choke chan [2]string,
+	callback func(string) error,
+) {
 	if topic == "" {
 		fmt.Println("Invalid setting for -topic, must not be empty")
 		return
@@ -72,14 +77,14 @@ func ListenTopic(client MQTT.Client, topic string, qos int, choke chan [2]string
 		incoming := <-choke
 
 		topicRecieved := incoming[0]
+		if topicRecieved != topic {
+			continue
+		}
 		messageRecieved := incoming[1]
 
-		marshaled, err := json.MarshalIndent(messageRecieved, "", "   ")
-		if err != nil {
-			log.Fatalf("marshaling error: %s\n", err)
+		if callback != nil {
+			go callback(messageRecieved)
 		}
-		fmt.Printf("Received topic: %s \n", topicRecieved)
-		fmt.Println("message: ", string(marshaled))
 	}
 }
 
