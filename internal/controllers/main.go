@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 
 	"github.com/ION-Smart/ion.mqtt/internal/config"
@@ -16,6 +15,19 @@ func init() {
 	if err := godotenv.Load(); err != nil {
 		panic("No .env file found")
 	}
+}
+
+func InitDB() error {
+	var err error
+
+	conf := config.New()
+	db, err = GetConnection(conf)
+
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	return nil
 }
 
 func GetConnection(conf *config.Config) (*sql.DB, error) {
@@ -43,19 +55,4 @@ func GetConnection(conf *config.Config) (*sql.DB, error) {
 		return nil, pingErr
 	}
 	return db, nil
-}
-
-func InitDB() error {
-	var err error
-
-	conf := config.New()
-	fmt.Println(conf)
-
-	db, err = GetConnection(conf)
-
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	return nil
 }

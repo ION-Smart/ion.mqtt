@@ -15,7 +15,6 @@ import (
 )
 
 func main() {
-	// Use the InitDB function to initialise the global variable.
 	err := controllers.InitDB()
 	if err != nil {
 		log.Fatal(err)
@@ -44,13 +43,6 @@ func main() {
 
 	go ionmqtt.ListenTopic(client, "crowdest", qos, choke, cv.CrowdestCallback)
 	go ionmqtt.ListenTopic(client, "securt", qos, choke, cv.SecurtCallback)
-
-	aly, err := controllers.GetAnalysis()
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-	fmt.Println(aly)
 
 	go forever()
 

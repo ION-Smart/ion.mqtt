@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	m "github.com/ION-Smart/ion.mqtt/internal/models"
+	cv "github.com/ION-Smart/ion.mqtt/pkg/cvevents"
 )
 
 func GetAnalysis() ([]m.Analysis, error) {
@@ -30,11 +31,14 @@ func GetAnalysis() ([]m.Analysis, error) {
 	return analysisTypes, nil
 }
 
-func InsertarOcupacion(
-	system_timestamp string,
-	ocupacion int,
-	cod_dispositivo string,
-	zoneId string,
-	movement string,
+func InsertarOcupacionCrowdest(
+	datos cv.MessageCrowd,
 ) {
+	fmt.Println(datos)
+}
+
+func InsertarOcupacionSecurt(
+	datos cv.MessageSecuRT,
+) {
+	fmt.Println(datos)
 }

@@ -26,6 +26,3 @@ type MessageSecuRT struct {
 	SystemDate      string  `json:"system_date"`
 	SystemTimestamp string  `json:"system_timestamp"`
 }
-
-func main() {
-}
