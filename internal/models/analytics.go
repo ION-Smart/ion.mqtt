@@ -5,3 +5,11 @@ type Analysis struct {
 	Type         string
 	SolutionCode string
 }
+
+type AnalysisOcupacion struct {
+	CodLog         string
+	FechaHora      DateTime
+	Ocupacion      int
+	CodDispositivo int
+	ZoneId         string
+}

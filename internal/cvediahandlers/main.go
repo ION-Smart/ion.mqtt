@@ -21,6 +21,10 @@ func CrowdestCallback(msg string) error {
 		return err
 	}
 
+	if data.InstanceId == "test crowd" {
+		data.InstanceId = "0c527620-f5a5-45dc-4ffc-7696cf817fbe"
+	}
+
 	fmt.Printf("Count: %d, Instance: %v\n", data.Count, data.InstanceId)
 
 	controllers.InsertarOcupacionCrowdest(data)
