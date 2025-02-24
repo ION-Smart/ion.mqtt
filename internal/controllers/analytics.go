@@ -51,7 +51,7 @@ func InsertarOcupacionCrowdest(
 		return
 	}
 	disp := dispositivoCloud[0]
-	zones, err := ObtenerZonasDeteccion(disp.CodDispositivo)
+	zones, err := ObtenerZonasDeteccion(disp.CodDispositivo, true)
 	if err != nil {
 		log.Println(err)
 		return
@@ -69,7 +69,7 @@ func InsertarOcupacionCrowdest(
 		ZoneId:         zoneId,
 		FechaHora:      fechaHora,
 	}
-	insertarOcupacion(ocup)
+	insertarRegistroOcupacion(ocup)
 }
 
 func InsertarOcupacionSecurt(
@@ -79,19 +79,19 @@ func InsertarOcupacionSecurt(
 	fmt.Println(datos)
 }
 
-func insertarOcupacion(ocup m.AnalysisOcupacion) {
+func insertarRegistroOcupacion(ocup m.AnalysisOcupacion) {
 	query := `INSERT INTO analysis_ocupacion
 	   (fecha_hora, ocupacion, cod_dispositivo, zoneId) VALUES (?, ?, ?, ?)`
 	stmt, err := db.Prepare(query)
 
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
 	defer stmt.Close() // Cerramos el statement
 
 	_, err = stmt.Exec(ocup.FechaHora.Time, ocup.Ocupacion, ocup.CodDispositivo, ocup.ZoneId)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
 
 	fmt.Printf("Ocupación insertada en dispositivo %d\n", ocup.CodDispositivo)
