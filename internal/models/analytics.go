@@ -9,6 +9,7 @@ type Analysis struct {
 type AnalysisOcupacion struct {
 	CodLog         string
 	FechaHora      DateTime
+	Timestamp      int
 	Ocupacion      int
 	CodDispositivo int
 	ZoneId         string

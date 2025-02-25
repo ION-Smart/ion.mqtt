@@ -1,18 +1,28 @@
 package controllers
 
 import (
+	// "encoding/base64"
 	"fmt"
+	// "time"
+
+	nx "github.com/ION-Smart/ion.mqtt/pkg/nxwitness"
 )
 
 type DispositivoCloud struct {
 	CodDispositivo int
 	NomDispositivo string
 	DeviceId       string
-	SystemId       string
-	CloudBaseUser  string
-	CloudBasePass  string
-	Ip             string
-	Puerto         int
+	Cloud          *nx.NxCloud
+	systemId       string
+	cloudBaseUser  string
+	cloudBasePass  string
+	ip             string
+	puerto         int
+	server         string
+}
+
+func (disp *DispositivoCloud) ObtenerImagen(timestamp int64) (string, error) {
+	return nx.GetDeviceThumbnailB64(disp.Cloud, "jpg", disp.DeviceId, timestamp)
 }
 
 func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]DispositivoCloud, error) {
@@ -40,14 +50,27 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 			&alb.CodDispositivo,
 			&alb.NomDispositivo,
 			&alb.DeviceId,
-			&alb.SystemId,
-			&alb.CloudBaseUser,
-			&alb.CloudBasePass,
-			&alb.Ip,
-			&alb.Puerto,
+			&alb.systemId,
+			&alb.cloudBaseUser,
+			&alb.cloudBasePass,
+			&alb.ip,
+			&alb.puerto,
 		); err != nil {
 			return nil, fmt.Errorf("dispositivos: %v", err)
 		}
+
+		var cerr error
+		alb.Cloud, cerr = nx.NewNxCloud(
+			alb.systemId,
+			alb.cloudBaseUser,
+			alb.cloudBasePass,
+			alb.ip,
+			alb.puerto,
+		)
+		if cerr != nil {
+			return nil, fmt.Errorf("dispositivos: %v", cerr)
+		}
+
 		dispositivos = append(dispositivos, alb)
 	}
 

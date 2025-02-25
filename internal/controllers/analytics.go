@@ -3,8 +3,13 @@ package controllers
 import (
 	"fmt"
 	"log"
+	"math"
+	"strconv"
+
+	// "time"
 
 	m "github.com/ION-Smart/ion.mqtt/internal/models"
+	"github.com/ION-Smart/ion.mqtt/internal/projectpath"
 	cv "github.com/ION-Smart/ion.mqtt/pkg/cvevents"
 )
 
@@ -62,14 +67,20 @@ func InsertarOcupacionCrowdest(
 		return
 	}
 	zoneId := zones[0].ZoneId
+	timestamp, err := strconv.Atoi(datos.SystemTimestamp)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
 	ocup := m.AnalysisOcupacion{
 		Ocupacion:      datos.Count,
 		CodDispositivo: disp.CodDispositivo,
 		ZoneId:         zoneId,
 		FechaHora:      fechaHora,
+		Timestamp:      timestamp,
 	}
-	insertarRegistroOcupacion(ocup)
+	insertarRegistroOcupacion(ocup, disp)
 }
 
 func InsertarOcupacionSecurt(
@@ -79,7 +90,7 @@ func InsertarOcupacionSecurt(
 	fmt.Println(datos)
 }
 
-func insertarRegistroOcupacion(ocup m.AnalysisOcupacion) {
+func insertarRegistroOcupacion(ocup m.AnalysisOcupacion, disp DispositivoCloud) {
 	query := `INSERT INTO analysis_ocupacion
 	   (fecha_hora, ocupacion, cod_dispositivo, zoneId) VALUES (?, ?, ?, ?)`
 	stmt, err := db.Prepare(query)
@@ -94,5 +105,65 @@ func insertarRegistroOcupacion(ocup m.AnalysisOcupacion) {
 		fmt.Println(err)
 	}
 
-	fmt.Printf("Ocupación insertada en dispositivo %d\n", ocup.CodDispositivo)
+	// Comprobaciones aforo para saber si se inserta alerta
+	comprobacionAlertaRemontador(ocup, disp)
+	comprobacionAlertaTaquillas(ocup, disp)
+	comprobacionAlertaRestaurante(ocup, disp)
+	comprobacionAlertaParking(ocup, disp)
 }
+
+func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoCloud) {
+	remontadores, err := ObtenerRemontadorDispositivo(ocup.CodDispositivo)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(remontadores)
+
+	if len(remontadores) < 1 {
+		fmt.Println("No hay remontadores que coincidan")
+		return
+	}
+
+	remontador := remontadores[0]
+
+	mitad_aforo := math.Round(float64(remontador.Aforo) / 2.0)
+	aforoElevado := math.Round(float64(remontador.Aforo) * 0.9)
+
+	if float64(ocup.Ocupacion) >= mitad_aforo && ComprobarEnvioAlertaOcupacionRemontador(remontador) {
+		timestampMs := ocup.Timestamp
+
+		imagenB64, err := disp.ObtenerImagen(int64(timestampMs))
+		if err != nil {
+			fmt.Println("Error al obtener la imagen: ", err)
+			return
+		}
+
+		rutaImagenInsert := ""
+		nombreImagen := fmt.Sprintf("%d_%06d.jpg", timestampMs, disp.CodDispositivo)
+		rutaImagenInsert = fmt.Sprintf("fotos/%v", nombreImagen)
+
+		rutaImagen := fmt.Sprintf("%v/%v", projectpath.Root, rutaImagenInsert)
+		_ = rutaImagenInsert
+
+		err = GuardarImagenBase64(imagenB64, rutaImagen)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var tipoAlerta string
+		if float64(ocup.Ocupacion) >= aforoElevado {
+			tipoAlerta = "005"
+		} else if float64(ocup.Ocupacion) >= mitad_aforo {
+			tipoAlerta = "002"
+		} else {
+			return
+		}
+		_ = tipoAlerta
+	}
+}
+
+func comprobacionAlertaTaquillas(ocup m.AnalysisOcupacion, disp DispositivoCloud)   {}
+func comprobacionAlertaRestaurante(ocup m.AnalysisOcupacion, disp DispositivoCloud) {}
+func comprobacionAlertaParking(ocup m.AnalysisOcupacion, disp DispositivoCloud)     {}

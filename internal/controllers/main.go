@@ -2,7 +2,10 @@ package controllers
 
 import (
 	"database/sql"
+	"encoding/base64"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/ION-Smart/ion.mqtt/internal/config"
 	mysql "github.com/go-sql-driver/mysql"
@@ -55,4 +58,33 @@ func GetConnection(conf *config.Config) (*sql.DB, error) {
 		return nil, pingErr
 	}
 	return db, nil
+}
+
+func ArrayTieneResultados(datos []any) bool {
+	if len(datos) > 0 {
+		return true
+	}
+	return false
+}
+
+func GuardarImagenBase64(imagenB64 string, rutaImagen string) error {
+	dec, err := base64.StdEncoding.DecodeString(imagenB64)
+	if err != nil {
+		return fmt.Errorf("Error al guardar imagen: %v", err)
+	}
+
+	f, err := os.Create(rutaImagen)
+	if err != nil {
+		return fmt.Errorf("Error al guardar imagen: %v", err)
+	}
+	defer f.Close()
+
+	if _, err := f.Write(dec); err != nil {
+		return fmt.Errorf("Error al guardar imagen: %v", err)
+	}
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("Error al guardar imagen: %v", err)
+	}
+
+	return nil
 }
