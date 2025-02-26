@@ -30,7 +30,7 @@ type Remontador struct {
 	Dispositivos           []DispositivoRemontador
 }
 
-func ObtenerRemontadorDispositivo(codDispositivo int) ([]Remontador, error) {
+func ObtenerRemontadores(codRemontador, codDispositivo int) ([]Remontador, error) {
 	var remontadores []Remontador
 	query :=
 		`SELECT 
@@ -40,9 +40,20 @@ func ObtenerRemontadorDispositivo(codDispositivo int) ([]Remontador, error) {
         FROM ski_remontadores r
         LEFT JOIN ski_zonas z 
             ON z.cod_zona = r.cod_zona
-        WHERE FIND_IN_SET(?, REPLACE(r.dispositivos, ";", ",")) > 0`
+        WHERE 1 `
 
-	rows, err := db.Query(query, fmt.Sprintf("%06d", codDispositivo))
+	var values []any
+	if codRemontador != 0 {
+		query += "AND r.cod_remontador = ? "
+		values = append(values, codRemontador)
+	}
+
+	if codDispositivo != 0 {
+		query += `AND FIND_IN_SET(?, REPLACE(r.dispositivos, ";", ",")) > 0 `
+		values = append(values, fmt.Sprintf("%06d", codDispositivo))
+	}
+
+	rows, err := db.Query(query, values...)
 	if err != nil {
 		return nil, fmt.Errorf("remontadores: %v", err)
 	}
@@ -70,7 +81,6 @@ func ObtenerRemontadorDispositivo(codDispositivo int) ([]Remontador, error) {
 
 		alb.Dispositivos, err = ObtenerDispositivosRemontador(
 			alb.CodRemontador,
-			"DISTINCT d.cod_dispositivo, d.nom_dispositivo, d.deviceId, f.nombre_fabricante, m.nombre_modelo, c.nombre_categoria",
 			alb.DispositivosStr,
 		)
 
@@ -86,11 +96,12 @@ func ObtenerRemontadorDispositivo(codDispositivo int) ([]Remontador, error) {
 	return remontadores, nil
 }
 
-func ObtenerDispositivosRemontador(codRemontador int, selection string, dispositivosStr string) ([]DispositivoRemontador, error) {
+func ObtenerDispositivosRemontador(codRemontador int, dispositivosStr string) ([]DispositivoRemontador, error) {
 	var dispositivos []DispositivoRemontador
 	query :=
 		fmt.Sprintf(`
-        SELECT %v
+        SELECT DISTINCT 
+            d.cod_dispositivo, d.nom_dispositivo, d.deviceId, f.nombre_fabricante, m.nombre_modelo, c.nombre_categoria
         FROM ski_remontadores r
         INNER JOIN dispositivos d ON FIND_IN_SET(d.cod_dispositivo, REPLACE(r.dispositivos, ';', ',')) > 0 
         LEFT JOIN cloud_nx cl ON d.cod_cloud = cl.cod_cloud
@@ -102,8 +113,7 @@ func ObtenerDispositivosRemontador(codRemontador int, selection string, disposit
         LEFT JOIN sectores_verticales sv ON sv.cod_sector = modulos.cod_sector
         WHERE dm.cod_modulo = 101 AND dm.estado_canal != 'caducado'
         AND r.cod_remontador = ?
-        ORDER BY FIELD(d.cod_dispositivo, '%v')`,
-			selection, strings.Join(strings.Split(dispositivosStr, ";"), "', '"))
+        ORDER BY FIELD(d.cod_dispositivo, '%v')`, strings.Join(strings.Split(dispositivosStr, ";"), "', '"))
 
 	rows, err := db.Query(query, codRemontador)
 	if err != nil {
@@ -138,40 +148,11 @@ func ComprobarEnvioAlertaOcupacionRemontador(rem Remontador) bool {
 	tiempoDesdeUltimaAlerta := obtenerTiempoUltimaAlertaRemontador(rem.CodRemontador)
 	tiempoTimeout := rem.TiempoExcedidoSegundos
 
+	fmt.Println(tiempoDesdeUltimaAlerta)
 	insertarAlerta := false
 
 	if tiempoDesdeUltimaAlerta > tiempoTimeout || tiempoDesdeUltimaAlerta == -1 {
 		insertarAlerta = true
 	}
 	return insertarAlerta
-}
-
-func obtenerTiempoUltimaAlertaRemontador(codRemontador int) int {
-	segundosUltimaAlerta := -1
-	// var alertas []AlertaSki
-	//
-	// ultima_alerta = ObtenerAlertasRemontadoresSkiParam(
-	//     cod_remontador,
-	//     1,
-	// )
-	//
-	// if (ArrayTieneResultados(ultima_alerta)) {
-	//     // fecha_hora_alerta = ultima_alerta[0].fecha_hora
-	//     //
-	//     // fecha_hora_alerta = new DateTime(fecha_hora_alerta)
-	//     // fecha_hora_alerta.setTimezone(TIME_ZONE)
-	//     //
-	//     // fecha_hora_actual = new Datetime("now")
-	//     // fecha_hora_actual.setTimezone(TIME_ZONE)
-	//     //
-	//     // diff = fecha_hora_alerta.diff(fecha_hora_actual)
-	//     //
-	//     // daysInSecs = diff.format("%r%a") * 24 * 60 * 60
-	//     // hoursInSecs = diff.h * 60 * 60
-	//     // minsInSecs = diff.i * 60
-	//     //
-	//     // segundosUltimaAlerta = daysInSecs + hoursInSecs + minsInSecs + diff.s
-	// }
-
-	return segundosUltimaAlerta
 }

@@ -15,6 +15,7 @@ import (
 
 var db *sql.DB
 var ModulosMap = make(map[string]m.Modulo)
+var SocketUrl = "https://ec2-52-28-246-249.eu-central-1.compute.amazonaws.com"
 
 func init() {
 	if err := godotenv.Load(); err != nil {
@@ -34,7 +35,6 @@ func InitDB() error {
 	}
 
 	modulosDb, err := obtenerModulos()
-	fmt.Println("Obtengo módulos")
 	if err != nil {
 		log.Fatal("Error al obtener módulos")
 	}
@@ -72,13 +72,6 @@ func GetConnection(conf *config.Config) (*sql.DB, error) {
 		return nil, pingErr
 	}
 	return db, nil
-}
-
-func ArrayTieneResultados(datos []any) bool {
-	if len(datos) > 0 {
-		return true
-	}
-	return false
 }
 
 func GuardarImagenBase64(imagenB64 string, rutaImagen string) error {

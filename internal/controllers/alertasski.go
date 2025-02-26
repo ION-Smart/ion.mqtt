@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	m "github.com/ION-Smart/ion.mqtt/internal/models"
 )
@@ -192,7 +193,7 @@ func enviarAlertaSkiSocket(codAlerta int) {
 		log.Fatalln(err)
 	}
 
-	postUrl := fmt.Sprintf("%v/skialertas_cambio", "https://ec2-52-28-246-249.eu-central-1.compute.amazonaws.com")
+	postUrl := fmt.Sprintf("%v/skialertas_cambio", SocketUrl)
 	res, err := http.Post(
 		postUrl,
 		"application/json",
@@ -213,4 +214,33 @@ func enviarAlertaSkiSocket(codAlerta int) {
 	}
 
 	fmt.Println(post)
+}
+
+func obtenerTiempoUltimaAlertaRemontador(codRemontador int) int {
+	segundosUltimaAlerta := -1
+	maxInt := int(^uint(0) >> 1)
+
+	alertas, err := ObtenerAlertasRemontadoresSkiParam(0, codRemontador, 1)
+
+	if err != nil || len(alertas) <= 0 {
+		return maxInt
+	}
+
+	ultimaAlerta := alertas[0]
+
+	fechaHoraAlerta := ultimaAlerta.FechaHora
+	timeAlerta, err := time.Parse(time.DateTime, fechaHoraAlerta)
+	if err != nil {
+		fmt.Println("error al parsear el tiempo %s", err)
+		return maxInt
+	}
+
+	timeActual, err := time.Parse(time.DateTime, time.Now().Format(time.DateTime))
+	if err != nil {
+		fmt.Println("error al parsear el tiempo %s", err)
+		return maxInt
+	}
+
+	segundosUltimaAlerta = int(timeActual.Unix()) - int(timeAlerta.Unix())
+	return segundosUltimaAlerta
 }

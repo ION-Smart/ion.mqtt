@@ -1,9 +1,12 @@
 package controllers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"net/http"
 	"strconv"
 
 	m "github.com/ION-Smart/ion.mqtt/internal/models"
@@ -116,7 +119,7 @@ func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoClou
 		log.Fatal("Módulo no encontrado: ", err)
 	}
 
-	remontadores, err := ObtenerRemontadorDispositivo(ocup.CodDispositivo)
+	remontadores, err := ObtenerRemontadores(0, ocup.CodDispositivo)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -201,8 +204,228 @@ func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoClou
 func comprobacionAlertaTaquillas(ocup m.AnalysisOcupacion, disp DispositivoCloud)   {}
 func comprobacionAlertaRestaurante(ocup m.AnalysisOcupacion, disp DispositivoCloud) {}
 func comprobacionAlertaParking(ocup m.AnalysisOcupacion, disp DispositivoCloud)     {}
+func EnviarPlazasOcupadasRemontadorSocket(codRemontador int)                        {}
+func EnviarPersonasTransportadasSocket(codRemontador int)                           {}
 
-func EnviarTiempoEsperaRemontadorSocket(codRemontador int)   {}
-func EnviarPlazasOcupadasRemontadorSocket(codRemontador int) {}
-func EnviarPersonasTransportadasSocket(codRemontador int)    {}
-func EnviarOcupacionRemontadorSocket(codRemontador int)      {}
+type BodyTiempoEsperaRemontadorSocket struct {
+	Ocupacion     TiempoEsperaRemontador `json:"ocupacion"`
+	CodRemontador string                 `json:"cod_remontador"`
+	NombreZona    string                 `json:"nombre_zona"`
+	Server        string                 `json:"server"`
+}
+
+func EnviarTiempoEsperaRemontadorSocket(codRemontador int) {
+	ocupaciones, err := ObtenerTiempoEsperaRemontador(codRemontador)
+	if err != nil {
+		fmt.Println(err)
+		return
+	} else if len(ocupaciones) <= 0 {
+		fmt.Println("No hay datos a enviar")
+		return
+	}
+	ocup := ocupaciones[0]
+
+	data := BodyTiempoEsperaRemontadorSocket{
+		Server:        "ionsmart.cat",
+		Ocupacion:     ocup,
+		CodRemontador: fmt.Sprintf("%010d", codRemontador),
+	}
+
+	body, err := json.Marshal(data)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	postUrl := fmt.Sprintf("%v/nuevo_tiempo_espera_remontadores", SocketUrl)
+	res, err := http.Post(
+		postUrl,
+		"application/json",
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	post := &SocketPost{}
+	derr := json.NewDecoder(res.Body).Decode(post)
+	if derr != nil {
+		log.Fatalln(err)
+	}
+
+	if res.StatusCode != http.StatusCreated {
+		fmt.Println(res.Status)
+	}
+
+	fmt.Println(post)
+
+	fmt.Println(ocup)
+}
+
+type BodyOcupacionTiempoRealSocket struct {
+	Ocupacion OcupacionTiempoReal `json:"ocupacion"`
+	Cod       string              `json:"cod"`
+	Server    string              `json:"server"`
+}
+
+func EnviarOcupacionRemontadorSocket(codRemontador int) {
+	ocupaciones, err := ObtenerOcupacionRemontadorTiempoReal(codRemontador)
+	if err != nil {
+		fmt.Println(err)
+		return
+	} else if len(ocupaciones) <= 0 {
+		fmt.Println("No hay datos a enviar")
+		return
+	}
+	ocup := ocupaciones[0]
+
+	data := BodyOcupacionTiempoRealSocket{
+		Server:    "ionsmart.cat",
+		Cod:       fmt.Sprintf("%010d", codRemontador),
+		Ocupacion: ocup,
+	}
+
+	body, err := json.Marshal(data)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	postUrl := fmt.Sprintf("%v/nueva_ocupacion", SocketUrl)
+	res, err := http.Post(
+		postUrl,
+		"application/json",
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	post := &SocketPost{}
+	derr := json.NewDecoder(res.Body).Decode(post)
+	if derr != nil {
+		log.Fatalln(err)
+	}
+
+	if res.StatusCode != http.StatusCreated {
+		fmt.Println(res.Status)
+	}
+
+	fmt.Println(post)
+
+	fmt.Println(ocup)
+}
+
+type OcupacionTiempoReal struct {
+	Ocupacion        int    `json:"ocupacion"`
+	Aforo            int    `json:"aforo"`
+	Fecha            string `json:"fecha"`
+	Hora             string `json:"hora"`
+	CodRemontador    int    `json:"cod_remontador"`
+	NombreRemontador string `json:"nombre_remontador"`
+	CodZona          int    `json:"cod_zona"`
+	NombreZona       string `json:"nombre_zona"`
+	Color            string `json:"color"`
+}
+
+func ObtenerOcupacionRemontadorTiempoReal(codRemontador int) ([]OcupacionTiempoReal, error) {
+	query :=
+		`SELECT 
+            o.ocupacion, r.aforo, CAST(o.fecha_hora AS DATE) as fecha, 
+            CAST(o.fecha_hora AS TIME) as hora, r.cod_remontador, r.nombre_remontador,
+            r.cod_zona, z.nombre_zona, z.color
+        FROM 
+            analysis_ocupacion o
+        LEFT JOIN
+            dispositivos d ON o.cod_dispositivo = d.cod_dispositivo
+        LEFT JOIN 
+            dispositivos_modulos dm ON dm.cod_dispositivo = d.cod_dispositivo
+        LEFT JOIN 
+            ski_remontadores r ON FIND_IN_SET(d.cod_dispositivo, REPLACE(r.dispositivos, ';', ',')) > 0 
+        LEFT JOIN
+            ski_zonas z ON r.cod_zona = z.cod_zona
+        WHERE r.cod_remontador = ?
+        AND o.fecha_hora >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        GROUP BY CAST(o.fecha_hora AS DATE), CAST(o.fecha_hora AS TIME), r.cod_remontador, r.cod_zona
+        ORDER BY o.fecha_hora DESC LIMIT 1;`
+	var ocupaciones []OcupacionTiempoReal
+
+	rows, err := db.Query(query, codRemontador)
+	if err != nil {
+		return nil, fmt.Errorf("ocupaciones: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var alb OcupacionTiempoReal
+
+		if err := rows.Scan(
+			&alb.Ocupacion,
+			&alb.Aforo,
+			&alb.Fecha,
+			&alb.Hora,
+			&alb.CodRemontador,
+			&alb.NombreRemontador,
+			&alb.CodZona,
+			&alb.NombreZona,
+			&alb.Color,
+		); err != nil {
+			return nil, fmt.Errorf("ocupaciones: %v", err)
+		}
+
+		ocupaciones = append(ocupaciones, alb)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ocupaciones: %v", err)
+	}
+	return ocupaciones, nil
+}
+
+type TiempoEsperaStruct struct {
+	Segundos     int    `json:"segundos"`
+	Minutos      int    `json:"minutos"`
+	CalculadoCon string `json:"calculado_con"`
+}
+
+type TiempoEsperaRemontador struct {
+	CodRemontador    int                `json:"cod_remontador"`
+	NombreRemontador string             `json:"nombre_remontador"`
+	NombreZona       string             `json:"nombre_zona"`
+	Remontes         int                `json:"num_remontes"`
+	Plazas           int                `json:"num_plazas"`
+	TiempoEspera     TiempoEsperaStruct `json:"tiempo_espera"`
+	OcupacionEntrada int                `json:"ocupacion_entrada"`
+	OcupacionEspera  int                `json:"ocupacion_espera"`
+	ColaTotal        int                `json:"cola_total"`
+}
+
+func ObtenerTiempoEsperaRemontador(codRemontador int) ([]TiempoEsperaRemontador, error) {
+	tiempos := []TiempoEsperaRemontador{}
+
+	remontadores, err := ObtenerRemontadores(codRemontador, 0)
+	if err != nil || len(remontadores) <= 0 {
+		return nil, fmt.Errorf("Remontador no encontrado: %s", err)
+	}
+
+	for _, rem := range remontadores {
+		fmt.Println(rem)
+		t := TiempoEsperaRemontador{
+			CodRemontador:    rem.CodRemontador,
+			NombreRemontador: rem.NombreRemontador,
+			NombreZona:       rem.NombreZona,
+			Remontes:         rem.Remontes,
+			Plazas:           rem.Plazas,
+			TiempoEspera: TiempoEsperaStruct{
+				Segundos:     0,
+				Minutos:      0,
+				CalculadoCon: "",
+			},
+			OcupacionEntrada: 0,
+			OcupacionEspera:  0,
+			ColaTotal:        0,
+		}
+
+		tiempos = append(tiempos, t)
+	}
+
+	return tiempos, nil
+}
