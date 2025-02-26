@@ -5,6 +5,7 @@ import (
 	"fmt"
 	// "time"
 
+	m "github.com/ION-Smart/ion.mqtt/internal/models"
 	nx "github.com/ION-Smart/ion.mqtt/pkg/nxwitness"
 )
 
@@ -80,20 +81,8 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 	return dispositivos, nil
 }
 
-type ZonaDeteccion struct {
-	ZoneId         string
-	CodDispositivo string
-	TipoArea       int
-	DescTipoArea   string
-	CodAlertaGest  any
-	NombreAlerta   any
-	CodModulo      int
-	Solution       string
-	CodInfraccion  any
-}
-
-func ObtenerZonasDeteccion(codDispositivo int, crowdest bool) ([]ZonaDeteccion, error) {
-	var zonas []ZonaDeteccion
+func ObtenerZonasDeteccion(codDispositivo int, crowdest bool) ([]m.ZonaDeteccion, error) {
+	var zonas []m.ZonaDeteccion
 	query :=
 		`SELECT 
             zd.zoneId, zd.cod_dispositivo, zd.cod_tipo_area, ta.desc_tipo_area,
@@ -125,7 +114,7 @@ func ObtenerZonasDeteccion(codDispositivo int, crowdest bool) ([]ZonaDeteccion, 
 
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb ZonaDeteccion
+		var alb m.ZonaDeteccion
 
 		if err := rows.Scan(
 			&alb.ZoneId,

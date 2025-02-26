@@ -6,8 +6,6 @@ import (
 	"math"
 	"strconv"
 
-	// "time"
-
 	m "github.com/ION-Smart/ion.mqtt/internal/models"
 	"github.com/ION-Smart/ion.mqtt/internal/projectpath"
 	cv "github.com/ION-Smart/ion.mqtt/pkg/cvevents"
@@ -66,7 +64,7 @@ func InsertarOcupacionCrowdest(
 		log.Println("No hay zonas para el dispositivo")
 		return
 	}
-	zoneId := zones[0].ZoneId
+	zona := zones[0]
 	timestamp, err := strconv.Atoi(datos.SystemTimestamp)
 	if err != nil {
 		log.Println(err)
@@ -76,7 +74,7 @@ func InsertarOcupacionCrowdest(
 	ocup := m.AnalysisOcupacion{
 		Ocupacion:      datos.Count,
 		CodDispositivo: disp.CodDispositivo,
-		ZoneId:         zoneId,
+		Zona:           zona,
 		FechaHora:      fechaHora,
 		Timestamp:      timestamp,
 	}
@@ -100,7 +98,7 @@ func insertarRegistroOcupacion(ocup m.AnalysisOcupacion, disp DispositivoCloud) 
 	}
 	defer stmt.Close() // Cerramos el statement
 
-	_, err = stmt.Exec(ocup.FechaHora.Time, ocup.Ocupacion, ocup.CodDispositivo, ocup.ZoneId)
+	_, err = stmt.Exec(ocup.FechaHora.Time, ocup.Ocupacion, ocup.CodDispositivo, ocup.Zona.ZoneId)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -113,13 +111,16 @@ func insertarRegistroOcupacion(ocup m.AnalysisOcupacion, disp DispositivoCloud) 
 }
 
 func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoCloud) {
-	remontadores, err := ObtenerRemontadorDispositivo(ocup.CodDispositivo)
+	modulo, err := ObtenerModulo("lifters")
+	if err != nil {
+		log.Fatal("Módulo no encontrado: ", err)
+	}
 
+	remontadores, err := ObtenerRemontadorDispositivo(ocup.CodDispositivo)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(remontadores)
 
 	if len(remontadores) < 1 {
 		fmt.Println("No hay remontadores que coincidan")
@@ -152,18 +153,56 @@ func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoClou
 			log.Fatal(err)
 		}
 
-		var tipoAlerta string
+		var tipoAlerta int
 		if float64(ocup.Ocupacion) >= aforoElevado {
-			tipoAlerta = "005"
+			tipoAlerta = 5
 		} else if float64(ocup.Ocupacion) >= mitad_aforo {
-			tipoAlerta = "002"
+			tipoAlerta = 2
 		} else {
 			return
 		}
-		_ = tipoAlerta
+
+		alrt := m.AlertaSki{
+			TipoAlerta:     tipoAlerta,
+			CodModulo:      modulo.CodModulo,
+			Ocupacion:      ocup.Ocupacion,
+			Imagen:         rutaImagenInsert,
+			CodRemontador:  remontador.CodRemontador,
+			CodTaquilla:    0,
+			CodRestaurante: 0,
+			CodParking:     0,
+			CodDispositivo: disp.CodDispositivo,
+			FechaHora:      ocup.FechaHora.Time,
+			ZoneId:         ocup.Zona.ZoneId,
+		}
+		fmt.Println(alrt)
+		fmt.Printf("Alerta a insertar: mod --> %v, tipo --> %d en %v", alrt.CodModulo, alrt.TipoAlerta, alrt.ZoneId)
+
+		err = InsertarAlertaSki(alrt)
+		if err != nil {
+			log.Fatalf("Error al insertar alerta: %v", err)
+		}
+	}
+
+	switch ocup.Zona.TipoArea {
+	case 1, 2, 6:
+		EnviarTiempoEsperaRemontadorSocket(remontador.CodRemontador)
+		EnviarPlazasOcupadasRemontadorSocket(remontador.CodRemontador)
+	case 3:
+		// Personas transportadas
+		EnviarPersonasTransportadasSocket(remontador.CodRemontador)
+	case 4, 5, 7:
+		// Tiempo espera taquillas
+	default:
+		EnviarOcupacionRemontadorSocket(remontador.CodRemontador)
 	}
 }
 
 func comprobacionAlertaTaquillas(ocup m.AnalysisOcupacion, disp DispositivoCloud)   {}
 func comprobacionAlertaRestaurante(ocup m.AnalysisOcupacion, disp DispositivoCloud) {}
 func comprobacionAlertaParking(ocup m.AnalysisOcupacion, disp DispositivoCloud)     {}
+
+func EnviarTiempoEsperaRemontadorSocket(codRemontador int)   {}
+func EnviarPlazasOcupadasRemontadorSocket(codRemontador int) {}
+func EnviarPersonasTransportadasSocket(codRemontador int)    {}
+func EnviarOcupacionRemontadorSocket(codRemontador int)      {}

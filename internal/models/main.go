@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+type Modulo struct {
+	CodModulo    int
+	Abreviacion  string
+	NombreModulo string
+	CodSector    int
+}
+
 type DateTime struct {
 	Time string
 }

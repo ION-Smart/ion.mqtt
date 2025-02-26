@@ -8,11 +8,13 @@ import (
 	"os"
 
 	"github.com/ION-Smart/ion.mqtt/internal/config"
+	m "github.com/ION-Smart/ion.mqtt/internal/models"
 	mysql "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 )
 
 var db *sql.DB
+var ModulosMap = make(map[string]m.Modulo)
 
 func init() {
 	if err := godotenv.Load(); err != nil {
@@ -29,6 +31,18 @@ func InitDB() error {
 	if err != nil {
 		log.Fatal(err)
 		return err
+	}
+
+	modulosDb, err := obtenerModulos()
+	fmt.Println("Obtengo módulos")
+	if err != nil {
+		log.Fatal("Error al obtener módulos")
+	}
+
+	if len(modulosDb) > 0 {
+		for _, v := range modulosDb {
+			ModulosMap[v.NombreModulo] = v
+		}
 	}
 	return nil
 }
@@ -87,4 +101,48 @@ func GuardarImagenBase64(imagenB64 string, rutaImagen string) error {
 	}
 
 	return nil
+}
+
+func obtenerModulos() ([]m.Modulo, error) {
+	var modulos []m.Modulo
+
+	query :=
+		`SELECT 
+            m.*
+        FROM modulos m`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("modulos: %v", err)
+	}
+	defer rows.Close()
+
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb m.Modulo
+
+		if err := rows.Scan(
+			&alb.CodModulo,
+			&alb.Abreviacion,
+			&alb.NombreModulo,
+			&alb.CodSector,
+		); err != nil {
+			return nil, fmt.Errorf("modulos: %v", err)
+		}
+
+		modulos = append(modulos, alb)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("modulos: %v", err)
+	}
+	return modulos, nil
+}
+
+func ObtenerModulo(nombreModulo string) (m.Modulo, error) {
+	if val, ok := ModulosMap[nombreModulo]; ok {
+		return val, nil
+	}
+
+	return m.Modulo{}, fmt.Errorf("No hay modulos que coincidan")
 }
