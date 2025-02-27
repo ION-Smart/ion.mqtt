@@ -209,7 +209,7 @@ func enviarAlertaSkiSocket(codAlerta int) {
 		log.Fatalln(err)
 	}
 
-	if res.StatusCode != http.StatusCreated {
+	if res.StatusCode != 200 {
 		fmt.Println(res.Status)
 	}
 
@@ -231,13 +231,13 @@ func obtenerTiempoUltimaAlertaRemontador(codRemontador int) int {
 	fechaHoraAlerta := ultimaAlerta.FechaHora
 	timeAlerta, err := time.Parse(time.DateTime, fechaHoraAlerta)
 	if err != nil {
-		fmt.Println("error al parsear el tiempo %s", err)
+		fmt.Printf("Error al parsear el tiempo %s\n", err)
 		return maxInt
 	}
 
 	timeActual, err := time.Parse(time.DateTime, time.Now().Format(time.DateTime))
 	if err != nil {
-		fmt.Println("error al parsear el tiempo %s", err)
+		fmt.Printf("Error al parsear el tiempo %s\n", err)
 		return maxInt
 	}
 

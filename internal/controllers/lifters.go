@@ -156,3 +156,79 @@ func ComprobarEnvioAlertaOcupacionRemontador(rem Remontador) bool {
 	}
 	return insertarAlerta
 }
+
+type OcupacionSubida struct {
+	CodLogOcupacion int
+	Ocupacion       int
+	FechaHora       string
+}
+
+func ObtenerPersonasTransportadasRemontadoresTodosDatos(
+	codRemontador int,
+	fechaHoraIni string,
+	limit int,
+) ([]OcupacionSubida, error) {
+	var ocupacion []OcupacionSubida
+	query := `
+        SELECT 
+			o.cod_log_ocupacion, o.ocupacion, o.fecha_hora
+		FROM 
+			analysis_ocupacion o
+		LEFT JOIN
+			dispositivos d ON o.cod_dispositivo = d.cod_dispositivo
+		LEFT JOIN
+			dispositivos_modulos dm ON d.cod_dispositivo = dm.cod_dispositivo
+		LEFT JOIN 
+			ski_remontadores r ON FIND_IN_SET(d.cod_dispositivo, REPLACE(r.dispositivos, ';', ',')) > 0 
+		LEFT JOIN
+			ski_zonas z ON r.cod_zona = z.cod_zona
+		LEFT JOIN
+			analysis_zona_deteccion zd ON (o.zoneId = zd.zoneId AND d.cod_dispositivo = zd.cod_dispositivo)
+		LEFT JOIN
+			analysis_tipo_area ta ON zd.cod_tipo_area = ta.cod_tipo_area
+		WHERE r.cod_remontador IS NOT NULL 
+		AND (ta.cod_tipo_area = 6 OR (ta.desc_tipo_area = 'Subida remontador' AND ta.cod_modulo = 101))
+        AND dm.cod_modulo = ?
+        AND dm.estado_canal != 'caducado' `
+	modulo, _ := ObtenerModulo("lifters")
+	var values []any
+	values = append(values, modulo.CodModulo)
+
+	if codRemontador != 0 {
+		query += "AND r.cod_remontador = ? "
+		values = append(values, codRemontador)
+	}
+
+	if fechaHoraIni != "" {
+		query += "AND o.fecha_hora >= ? "
+		values = append(values, fechaHoraIni)
+	}
+
+	query += "GROUP BY cod_remontador, cod_log_ocupacion ORDER BY o.fecha_hora DESC LIMIT ?;"
+	values = append(values, limit)
+
+	rows, err := db.Query(query, values...)
+	if err != nil {
+		return nil, fmt.Errorf("obtenerPersonasTransportadas query: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var alb OcupacionSubida
+
+		if err := rows.Scan(
+			&alb.CodLogOcupacion,
+			&alb.Ocupacion,
+			&alb.FechaHora,
+		); err != nil {
+			return nil, fmt.Errorf("obtenerPersonasTransportadas asignar valores: %v", err)
+		}
+
+		ocupacion = append(ocupacion, alb)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("obtenerPersonasTransportadas: %v", err)
+	}
+	return ocupacion, nil
+}

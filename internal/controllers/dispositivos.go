@@ -81,6 +81,74 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 	return dispositivos, nil
 }
 
+func ObtenerDispositivoDatosCloud(codDispositivo int, deviceId string) (DispositivoCloud, error) {
+	var dispositivo DispositivoCloud
+
+	if codDispositivo <= 0 && deviceId == "" {
+		return DispositivoCloud{}, fmt.Errorf("Parámetros insuficientes")
+	}
+
+	query :=
+		`SELECT 
+            d.cod_dispositivo, d.nom_dispositivo, d.deviceId, 
+            cl.systemId, cl.user, cl.password, cl.ip, cl.puerto
+        FROM dispositivos d
+        LEFT JOIN cloud_nx cl ON d.cod_cloud = cl.cod_cloud
+        WHERE 1 `
+	var values []any
+
+	if deviceId != "" {
+		query += "AND deviceId = ? "
+		values = append(values, deviceId)
+	}
+
+	if codDispositivo != 0 {
+		query += "AND cod_dispositivo = ? "
+		values = append(values, deviceId)
+	}
+
+	rows, err := db.Query(query, values...)
+	if err != nil {
+		return DispositivoCloud{}, fmt.Errorf("dispositivo: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var alb DispositivoCloud
+		if err := rows.Scan(
+			&alb.CodDispositivo,
+			&alb.NomDispositivo,
+			&alb.DeviceId,
+			&alb.systemId,
+			&alb.cloudBaseUser,
+			&alb.cloudBasePass,
+			&alb.ip,
+			&alb.puerto,
+		); err != nil {
+			return DispositivoCloud{}, fmt.Errorf("dispositivo: %v", err)
+		}
+
+		var cerr error
+		alb.Cloud, cerr = nx.NewNxCloud(
+			alb.systemId,
+			alb.cloudBaseUser,
+			alb.cloudBasePass,
+			alb.ip,
+			alb.puerto,
+		)
+		if cerr != nil {
+			return DispositivoCloud{}, fmt.Errorf("dispositivos: %v", cerr)
+		}
+
+		dispositivo = alb
+	}
+
+	if err := rows.Err(); err != nil {
+		return DispositivoCloud{}, fmt.Errorf("dispositivos: %v", err)
+	}
+	return dispositivo, nil
+}
+
 func ObtenerZonasDeteccion(codDispositivo int, crowdest bool) ([]m.ZonaDeteccion, error) {
 	var zonas []m.ZonaDeteccion
 	query :=
@@ -136,4 +204,57 @@ func ObtenerZonasDeteccion(codDispositivo int, crowdest bool) ([]m.ZonaDeteccion
 		return nil, fmt.Errorf("zonas: %v", err)
 	}
 	return zonas, nil
+}
+func ObtenerZonaDeteccion(zoneId string) (m.ZonaDeteccion, error) {
+	zonaVacia := m.ZonaDeteccion{}
+	zona := zonaVacia
+
+	if zoneId == "" {
+		return zonaVacia, fmt.Errorf("No se ha recibido id de la zona")
+	}
+
+	query :=
+		`SELECT 
+            zd.zoneId, zd.cod_dispositivo, zd.cod_tipo_area, ta.desc_tipo_area,
+            ta.cod_alertagest, ag.nombre_alerta, ta.cod_modulo, zd.solution, zd.cod_infraccion
+        FROM analysis_zona_deteccion zd
+        LEFT JOIN analysis_tipo_area ta ON zd.cod_tipo_area = ta.cod_tipo_area
+        LEFT JOIN alertas_gestion ag ON ta.cod_alertagest = ag.cod_alertagest
+        WHERE zd.zoneId = ? `
+
+	rows, err := db.Query(query, zoneId)
+	if err != nil {
+		return zonaVacia, fmt.Errorf("zona: %v", err)
+	}
+	defer rows.Close()
+
+	// Loop through rows, using Scan to assign column data to struct fields.
+	for rows.Next() {
+		var alb m.ZonaDeteccion
+
+		if err := rows.Scan(
+			&alb.ZoneId,
+			&alb.CodDispositivo,
+			&alb.TipoArea,
+			&alb.DescTipoArea,
+			&alb.CodAlertaGest,
+			&alb.NombreAlerta,
+			&alb.CodModulo,
+			&alb.Solution,
+			&alb.CodInfraccion,
+		); err != nil {
+			return zonaVacia, fmt.Errorf("zona: %v", err)
+		}
+		zona = alb
+	}
+
+	if err := rows.Err(); err != nil {
+		return zonaVacia, fmt.Errorf("zona: %v", err)
+	}
+
+	if zona == zonaVacia {
+		return zonaVacia, fmt.Errorf("zona no encontrada")
+	}
+
+	return zona, nil
 }
