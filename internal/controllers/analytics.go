@@ -353,7 +353,6 @@ func EnviarPlazasOcupadasRemontadorSocket(remontador Remontador) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	fmt.Println(bytes.NewBuffer(body))
 
 	postUrl := fmt.Sprintf("%v/plazas_ocupadas_remontadores", SocketUrl)
 	res, err := http.Post(
@@ -374,8 +373,6 @@ func EnviarPlazasOcupadasRemontadorSocket(remontador Remontador) {
 	if res.StatusCode != 200 {
 		fmt.Println(res.Status)
 	}
-
-	fmt.Println(post)
 }
 
 type BodyTiempoEsperaRemontadorSocket struct {
@@ -422,11 +419,6 @@ func EnviarTiempoEsperaRemontadorSocket(codRemontador int) {
 	if derr != nil {
 		log.Fatalln(err)
 	}
-
-	if res.StatusCode != 200 {
-		fmt.Println(res.Status)
-	}
-	// fmt.Println(post)
 }
 
 type BodyOcupacionTiempoRealSocket struct {
@@ -471,10 +463,6 @@ func EnviarOcupacionRemontadorSocket(codRemontador int) {
 	derr := json.NewDecoder(res.Body).Decode(post)
 	if derr != nil {
 		log.Fatalln(err)
-	}
-
-	if res.StatusCode != 200 {
-		fmt.Println(res.Status)
 	}
 }
 
