@@ -208,12 +208,6 @@ func enviarAlertaSkiSocket(codAlerta int) {
 	if derr != nil {
 		log.Fatalln(err)
 	}
-
-	if res.StatusCode != 200 {
-		fmt.Println(res.Status)
-	}
-
-	fmt.Println(post)
 }
 
 func obtenerTiempoUltimaAlertaRemontador(codRemontador int) int {

@@ -69,7 +69,7 @@ func (nx *NxCloud) setLoginToken() error {
 		return derr
 	}
 
-	if res.StatusCode != http.StatusCreated {
+	if res.StatusCode != 200 {
 		fmt.Println(res.Status)
 	}
 	nx.Token = post.Token

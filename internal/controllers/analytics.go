@@ -87,8 +87,6 @@ func InsertarOcupacionCrowdest(
 func InsertarOcupacionSecurt(
 	datos cv.MessageSecuRTest,
 ) {
-	fmt.Println("MessageSecuRT")
-
 	var fechaHora m.DateTime
 	fechaHora.GetDateTimeFromStringMilli(datos.SystemTimestamp)
 	disp, err := ObtenerDispositivoDatosCloud(0, datos.Event.InstanceId)
@@ -114,8 +112,21 @@ func InsertarOcupacionSecurt(
 		return
 	}
 
+	ocupacionInsert := datos.Event.Extra.CurrentEntries
+	if zona.TipoArea == 3 {
+		rem, err := ObtenerRemontadores(0, disp.CodDispositivo)
+		if err != nil || len(rem) <= 0 {
+			log.Println("Remontador inexistente: ", err)
+			return
+		}
+
+		if rem[0].Plazas < ocupacionInsert {
+			ocupacionInsert = rem[0].Plazas
+		}
+	}
+
 	ocup := m.AnalysisOcupacion{
-		Ocupacion:      datos.Event.Extra.CurrentEntries,
+		Ocupacion:      ocupacionInsert,
 		CodDispositivo: disp.CodDispositivo,
 		Zona:           zona,
 		FechaHora:      fechaHora,
@@ -140,6 +151,7 @@ func insertarRegistroOcupacion(ocup m.AnalysisOcupacion, disp DispositivoCloud) 
 		fmt.Println(err)
 	}
 
+	// fmt.Println("Desc tipo area: ", ocup.Zona.DescTipoArea)
 	// Comprobaciones aforo para saber si se inserta alerta
 	comprobacionAlertaRemontador(ocup, disp)
 	comprobacionAlertaTaquillas(ocup, disp)
@@ -227,7 +239,7 @@ func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoClou
 		EnviarPlazasOcupadasRemontadorSocket(remontador)
 	case 3:
 		// Personas transportadas
-		EnviarPersonasTransportadasSocket(remontador.CodRemontador)
+		EnviarPersonasTransportadasSocket(remontador)
 	case 4, 5, 7:
 		// Tiempo espera taquillas
 	default:
@@ -238,7 +250,122 @@ func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoClou
 func comprobacionAlertaTaquillas(ocup m.AnalysisOcupacion, disp DispositivoCloud)   {}
 func comprobacionAlertaRestaurante(ocup m.AnalysisOcupacion, disp DispositivoCloud) {}
 func comprobacionAlertaParking(ocup m.AnalysisOcupacion, disp DispositivoCloud)     {}
-func EnviarPersonasTransportadasSocket(codRemontador int)                           {}
+
+type PersonasTransportadas struct {
+	Ocupacion        int    `json:"ocupacion"`
+	Fecha            string `json:"fecha"`
+	CodRemontador    string `json:"cod_remontador"`
+	NombreRemontador string `json:"nombre_remontador"`
+}
+type BodyPersonasTransportadasSocket struct {
+	Ocupacion     PersonasTransportadas `json:"ocupacion"`
+	CodRemontador string                `json:"cod_remontador"`
+	Server        string                `json:"server"`
+}
+
+func ObtenerPersonasTransportadasHoyRemontador(codRemontador int) (PersonasTransportadas, error) {
+	modulo, _ := ObtenerModulo("lifters")
+	query := `
+        SELECT DISTINCT
+	        SUM(IFNULL(o.ocupacion, 0)) as ocupacion,
+            CAST(o.fecha_hora as DATE) as fecha, 
+            r.cod_remontador, r.nombre_remontador	
+		FROM 
+			analysis_ocupacion o
+		LEFT JOIN
+			dispositivos d ON o.cod_dispositivo = d.cod_dispositivo
+		LEFT JOIN
+			dispositivos_modulos dm ON d.cod_dispositivo = dm.cod_dispositivo
+		LEFT JOIN 
+			ski_remontadores r ON FIND_IN_SET(d.cod_dispositivo, REPLACE(r.dispositivos, ';', ',')) > 0 
+		LEFT JOIN
+			ski_zonas z ON r.cod_zona = z.cod_zona
+		LEFT JOIN
+			analysis_zona_deteccion zd ON o.zoneId = zd.zoneId
+		LEFT JOIN
+			analysis_tipo_area ta ON zd.cod_tipo_area = ta.cod_tipo_area
+		WHERE r.cod_remontador IS NOT NULL 
+		AND (ta.cod_tipo_area = 3 OR (ta.desc_tipo_area = 'Salida' AND ta.cod_modulo = ?))
+        AND dm.cod_modulo = ?
+        AND dm.estado_canal != 'caducado'
+    `
+	var empty PersonasTransportadas
+	ocupaciones := empty
+	var values []any
+	values = append(values, []any{modulo.CodModulo, modulo.CodModulo}...)
+
+	fechaHoy := time.Now().Format(time.DateTime)
+	query += "AND CAST(o.fecha_hora AS DATE) = ? "
+	values = append(values, strings.Split(fechaHoy, " ")[0])
+
+	if codRemontador > 0 {
+		query += "AND r.cod_remontador = ? "
+		values = append(values, codRemontador)
+	}
+
+	query += `GROUP BY CAST(o.fecha_hora as DATE), r.cod_remontador ORDER BY o.fecha_hora DESC;`
+	rows, err := db.Query(query, values...)
+	if err != nil {
+		return empty, fmt.Errorf("personasTransportadasHoy: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var alb PersonasTransportadas
+
+		if err := rows.Scan(
+			&alb.Ocupacion,
+			&alb.Fecha,
+			&alb.CodRemontador,
+			&alb.NombreRemontador,
+		); err != nil {
+			return empty, fmt.Errorf("personasTransportadasHoy: %v", err)
+		}
+
+		alb.CodRemontador = fmt.Sprintf("%010s", alb.CodRemontador)
+		ocupaciones = alb
+	}
+
+	if err := rows.Err(); err != nil {
+		return empty, fmt.Errorf("personasTransportadasHoy: %v", err)
+	}
+	return ocupaciones, nil
+}
+
+func EnviarPersonasTransportadasSocket(remontador Remontador) {
+	ocup, err := ObtenerPersonasTransportadasHoyRemontador(remontador.CodRemontador)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	data := BodyPersonasTransportadasSocket{
+		Server:        "ionsmart.cat",
+		Ocupacion:     ocup,
+		CodRemontador: fmt.Sprintf("%010d", remontador.CodRemontador),
+	}
+
+	body, err := json.Marshal(data)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	postUrl := fmt.Sprintf("%v/nueva_persona_transportada", SocketUrl)
+	res, err := http.Post(
+		postUrl,
+		"application/json",
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	post := &SocketPost{}
+	derr := json.NewDecoder(res.Body).Decode(post)
+	if derr != nil {
+		log.Fatalln(err)
+	}
+}
 
 type OcupacionSend struct {
 	Remontes            int         `json:"num_remontes"`
@@ -368,10 +495,6 @@ func EnviarPlazasOcupadasRemontadorSocket(remontador Remontador) {
 	derr := json.NewDecoder(res.Body).Decode(post)
 	if derr != nil {
 		log.Fatalln(err)
-	}
-
-	if res.StatusCode != 200 {
-		fmt.Println(res.Status)
 	}
 }
 
@@ -539,7 +662,7 @@ type TiempoEsperaStruct struct {
 }
 
 type TiempoEsperaRemontador struct {
-	CodRemontador    int                `json:"cod_remontador"`
+	CodRemontador    string             `json:"cod_remontador"`
 	NombreRemontador string             `json:"nombre_remontador"`
 	NombreZona       string             `json:"nombre_zona"`
 	Remontes         int                `json:"num_remontes"`
@@ -635,7 +758,7 @@ func ObtenerTiempoEsperaRemontador(codRemontador int) ([]TiempoEsperaRemontador,
 
 	for _, rem := range remontadores {
 		t := TiempoEsperaRemontador{
-			CodRemontador:    rem.CodRemontador,
+			CodRemontador:    fmt.Sprintf("%010d", rem.CodRemontador),
 			NombreRemontador: rem.NombreRemontador,
 			NombreZona:       rem.NombreZona,
 			Remontes:         rem.Remontes,

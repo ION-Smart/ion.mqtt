@@ -39,7 +39,7 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 
 	rows, err := db.Query(query, deviceId)
 	if err != nil {
-		return nil, fmt.Errorf("dispositivos: %v", err)
+		return nil, fmt.Errorf("dispositivosDatosCloud: %v", err)
 	}
 	defer rows.Close()
 
@@ -57,7 +57,7 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 			&alb.ip,
 			&alb.puerto,
 		); err != nil {
-			return nil, fmt.Errorf("dispositivos: %v", err)
+			return nil, fmt.Errorf("dispositivosDatosCloud: %v", err)
 		}
 
 		var cerr error
@@ -69,14 +69,14 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 			alb.puerto,
 		)
 		if cerr != nil {
-			return nil, fmt.Errorf("dispositivos: %v", cerr)
+			return nil, fmt.Errorf("dispositivosDatosCloud: %v", cerr)
 		}
 
 		dispositivos = append(dispositivos, alb)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("dispositivos: %v", err)
+		return nil, fmt.Errorf("dispositivosDatosCloud: %v", err)
 	}
 	return dispositivos, nil
 }
@@ -109,7 +109,7 @@ func ObtenerDispositivoDatosCloud(codDispositivo int, deviceId string) (Disposit
 
 	rows, err := db.Query(query, values...)
 	if err != nil {
-		return DispositivoCloud{}, fmt.Errorf("dispositivo: %v", err)
+		return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
 	}
 	defer rows.Close()
 
@@ -125,7 +125,7 @@ func ObtenerDispositivoDatosCloud(codDispositivo int, deviceId string) (Disposit
 			&alb.ip,
 			&alb.puerto,
 		); err != nil {
-			return DispositivoCloud{}, fmt.Errorf("dispositivo: %v", err)
+			return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
 		}
 
 		var cerr error
@@ -137,14 +137,14 @@ func ObtenerDispositivoDatosCloud(codDispositivo int, deviceId string) (Disposit
 			alb.puerto,
 		)
 		if cerr != nil {
-			return DispositivoCloud{}, fmt.Errorf("dispositivos: %v", cerr)
+			return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", cerr)
 		}
 
 		dispositivo = alb
 	}
 
 	if err := rows.Err(); err != nil {
-		return DispositivoCloud{}, fmt.Errorf("dispositivos: %v", err)
+		return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
 	}
 	return dispositivo, nil
 }

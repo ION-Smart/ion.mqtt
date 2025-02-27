@@ -20,12 +20,10 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	tiempo, err := c.ObtenerPlazasOcupadasRemontador(remontadores[0])
+	tiempo, err := c.ObtenerPersonasTransportadasHoyRemontador(remontadores[0].CodRemontador)
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	fmt.Println(tiempo)
 
 	body, err := json.Marshal(tiempo)
 	if err != nil {

@@ -31,7 +31,6 @@ func CrowdestCallback(msg string) error {
 }
 
 func SecurtCallback(msg string) error {
-	fmt.Println("SecuRT callback")
 	msg = strings.TrimRight(strings.TrimLeft(msg, "["), "]")
 
 	in := []byte(msg)
@@ -42,8 +41,8 @@ func SecurtCallback(msg string) error {
 		return err
 	}
 
-	event := data.Event
-	fmt.Printf("Count: %d, Instance: %v\n", event.Extra.CurrentEntries, event.InstanceId)
+	// event := data.Event
+	// fmt.Printf("Count: %d, Instance: %v\n", event.Extra.CurrentEntries, event.InstanceId)
 
 	if data.Event.InstanceId == "secur" {
 		data.Event.InstanceId = "bed1628a-63d5-e612-3808-78454a33a031"
