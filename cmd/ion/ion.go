@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 
@@ -15,20 +13,9 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	remontadores, err := c.ObtenerRemontadores(23, 0)
+	rest, err := c.ObtenerRestaurantes(0, 0)
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	tiempo, err := c.ObtenerPersonasTransportadasHoyRemontador(remontadores[0].CodRemontador)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	body, err := json.Marshal(tiempo)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	fmt.Println(bytes.NewBuffer(body))
+	fmt.Println(rest)
 }

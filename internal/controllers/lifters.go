@@ -4,34 +4,12 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	m "github.com/ION-Smart/ion.mqtt/internal/models"
 )
 
-type DispositivoRemontador struct {
-	CodDispositivo int
-	NomDispositivo string
-	DeviceId       string
-	Fabricante     string
-	Modelo         string
-	Categoria      string
-}
-
-type Remontador struct {
-	CodRemontador          int
-	NombreRemontador       string
-	Aforo                  int
-	TiempoExcedidoSegundos int
-	SegundosTrayecto       int
-	Plazas                 int
-	Remontes               int
-	Coordenadas            string
-	CodZona                int
-	NombreZona             string
-	DispositivosStr        string
-	Dispositivos           []DispositivoRemontador
-}
-
-func ObtenerRemontadores(codRemontador, codDispositivo int) ([]Remontador, error) {
-	var remontadores []Remontador
+func ObtenerRemontadores(codRemontador, codDispositivo int) ([]m.Remontador, error) {
+	var remontadores []m.Remontador
 	query :=
 		`SELECT 
             r.cod_remontador, r.nombre_remontador, r.aforo, r.tiempo_excedido_segundos,
@@ -61,7 +39,7 @@ func ObtenerRemontadores(codRemontador, codDispositivo int) ([]Remontador, error
 
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb Remontador
+		var alb m.Remontador
 
 		if err := rows.Scan(
 			&alb.CodRemontador,
@@ -96,8 +74,8 @@ func ObtenerRemontadores(codRemontador, codDispositivo int) ([]Remontador, error
 	return remontadores, nil
 }
 
-func ObtenerDispositivosRemontador(codRemontador int, dispositivosStr string) ([]DispositivoRemontador, error) {
-	var dispositivos []DispositivoRemontador
+func ObtenerDispositivosRemontador(codRemontador int, dispositivosStr string) ([]m.DispositivoRemontador, error) {
+	var dispositivos []m.DispositivoRemontador
 	query :=
 		fmt.Sprintf(`
         SELECT DISTINCT 
@@ -122,7 +100,7 @@ func ObtenerDispositivosRemontador(codRemontador int, dispositivosStr string) ([
 	defer rows.Close()
 
 	for rows.Next() {
-		var alb DispositivoRemontador
+		var alb m.DispositivoRemontador
 
 		if err := rows.Scan(
 			&alb.CodDispositivo,
@@ -144,7 +122,7 @@ func ObtenerDispositivosRemontador(codRemontador int, dispositivosStr string) ([
 	return dispositivos, nil
 }
 
-func ComprobarEnvioAlertaOcupacionRemontador(rem Remontador) bool {
+func ComprobarEnvioAlertaOcupacionRemontador(rem m.Remontador) bool {
 	tiempoDesdeUltimaAlerta := obtenerTiempoUltimaAlertaRemontador(rem.CodRemontador)
 	tiempoTimeout := rem.TiempoExcedidoSegundos
 

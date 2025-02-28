@@ -1,12 +1,9 @@
 package controllers
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -81,7 +78,7 @@ func InsertarOcupacionCrowdest(
 		FechaHora:      fechaHora,
 		Timestamp:      timestamp,
 	}
-	insertarRegistroOcupacion(ocup, disp)
+	insertarRegistroOcupacion(ocup, &disp)
 }
 
 func InsertarOcupacionSecurt(
@@ -113,6 +110,10 @@ func InsertarOcupacionSecurt(
 	}
 
 	ocupacionInsert := datos.Event.Extra.CurrentEntries
+	if zona.CodModulo == 101 && datos.Event.Type == "loitering_start" {
+		return
+	}
+
 	if zona.TipoArea == 3 {
 		rem, err := ObtenerRemontadores(0, disp.CodDispositivo)
 		if err != nil || len(rem) <= 0 {
@@ -133,10 +134,10 @@ func InsertarOcupacionSecurt(
 		Timestamp:      timestamp,
 	}
 
-	insertarRegistroOcupacion(ocup, disp)
+	insertarRegistroOcupacion(ocup, &disp)
 }
 
-func insertarRegistroOcupacion(ocup m.AnalysisOcupacion, disp DispositivoCloud) {
+func insertarRegistroOcupacion(ocup m.AnalysisOcupacion, disp *m.DispositivoCloud) {
 	query := `INSERT INTO analysis_ocupacion
 	   (fecha_hora, ocupacion, cod_dispositivo, zoneId) VALUES (?, ?, ?, ?)`
 	stmt, err := db.Prepare(query)
@@ -159,29 +160,127 @@ func insertarRegistroOcupacion(ocup m.AnalysisOcupacion, disp DispositivoCloud) 
 	comprobacionAlertaParking(ocup, disp)
 }
 
-func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoCloud) {
+func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp *m.DispositivoCloud) {
+	switch ocup.Zona.CodModulo {
+	case 101: // Lifters
+		remontadores, err := ObtenerRemontadores(0, ocup.CodDispositivo)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		if len(remontadores) < 1 {
+			fmt.Println("No hay remontadores que coincidan")
+			return
+		}
+		remontador := remontadores[0]
+		switch ocup.Zona.TipoArea {
+		case 1, 2:
+			alertaAforoLifters(ocup, remontador, disp)
+
+			EnviarTiempoEsperaRemontadorSocket(remontador.CodRemontador)
+			EnviarPlazasOcupadasRemontadorSocket(remontador)
+		case 6:
+			EnviarTiempoEsperaRemontadorSocket(remontador.CodRemontador)
+			EnviarPlazasOcupadasRemontadorSocket(remontador)
+		case 3:
+			// Personas transportadas
+			EnviarPersonasTransportadasSocket(remontador)
+		case 4, 5, 7:
+		// Tiempo espera taquillas
+		default:
+			EnviarOcupacionRemontadorSocket(remontador.CodRemontador)
+		}
+	case 105: // m.Restaurante
+		restaurantes, err := ObtenerRestaurantes(0, ocup.CodDispositivo)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		if len(restaurantes) < 1 {
+			fmt.Println("No hay restaurantes que coincidan")
+			return
+		}
+		rest := restaurantes[0]
+		if ocup.Zona.TipoArea == 34 { // Aforo
+			alertaAforoRestaurante(ocup, rest, disp)
+		}
+	}
+}
+
+func alertaAforoRestaurante(ocup m.AnalysisOcupacion, rest m.Restaurante, disp *m.DispositivoCloud) {
+	modulo, err := ObtenerModulo("restaurant")
+	if err != nil {
+		log.Fatal("Módulo no encontrado: ", err)
+	}
+
+	mitad_aforo := math.Round(float64(rest.Aforo) / 2.0)
+	aforoElevado := math.Round(float64(rest.Aforo) * 0.9)
+
+	if float64(ocup.Ocupacion) >= mitad_aforo && ComprobarEnvioAlertaOcupacionRestaurante(rest) {
+		timestampMs := ocup.Timestamp
+
+		imagenB64, err := disp.ObtenerImagen(int64(timestampMs))
+		if err != nil {
+			fmt.Println("Error al obtener la imagen: ", err)
+			return
+		}
+
+		rutaImagenInsert := ""
+		nombreImagen := fmt.Sprintf("%d_%06d.jpg", timestampMs, disp.CodDispositivo)
+		rutaImagenInsert = fmt.Sprintf("fotos/%v", nombreImagen)
+
+		rutaImagen := fmt.Sprintf("%v/%v", projectpath.Root, rutaImagenInsert)
+		_ = rutaImagenInsert
+
+		err = GuardarImagenBase64(imagenB64, rutaImagen)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var tipoAlerta int
+		if float64(ocup.Ocupacion) >= aforoElevado {
+			tipoAlerta = 5 // Ocupación elevada
+		} else if float64(ocup.Ocupacion) >= mitad_aforo {
+			tipoAlerta = 2 // Ocupación moderada
+		} else {
+			return
+		}
+
+		alrt := m.AlertaSki{
+			TipoAlerta:     tipoAlerta,
+			CodModulo:      modulo.CodModulo,
+			Ocupacion:      ocup.Ocupacion,
+			Imagen:         rutaImagenInsert,
+			CodRemontador:  0,
+			CodTaquilla:    0,
+			CodRestaurante: rest.CodRestaurante,
+			CodParking:     0,
+			CodDispositivo: disp.CodDispositivo,
+			FechaHora:      ocup.FechaHora.Time,
+			ZoneId:         ocup.Zona.ZoneId,
+		}
+		fmt.Println(alrt)
+		fmt.Printf("Alerta a insertar: mod --> %v, tipo --> %d en %v", alrt.CodModulo, alrt.TipoAlerta, alrt.ZoneId)
+
+		err = InsertarAlertaSki(alrt)
+		if err != nil {
+			log.Fatalf("Error al insertar alerta: %v", err)
+		}
+	}
+}
+
+func alertaAforoLifters(ocup m.AnalysisOcupacion, rem m.Remontador, disp *m.DispositivoCloud) {
 	modulo, err := ObtenerModulo("lifters")
 	if err != nil {
 		log.Fatal("Módulo no encontrado: ", err)
 	}
 
-	remontadores, err := ObtenerRemontadores(0, ocup.CodDispositivo)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	mitad_aforo := math.Round(float64(rem.Aforo) / 2.0)
+	aforoElevado := math.Round(float64(rem.Aforo) * 0.9)
 
-	if len(remontadores) < 1 {
-		fmt.Println("No hay remontadores que coincidan")
-		return
-	}
-
-	remontador := remontadores[0]
-
-	mitad_aforo := math.Round(float64(remontador.Aforo) / 2.0)
-	aforoElevado := math.Round(float64(remontador.Aforo) * 0.9)
-
-	if (ocup.Zona.TipoArea == 1 || ocup.Zona.TipoArea == 2) && float64(ocup.Ocupacion) >= mitad_aforo && ComprobarEnvioAlertaOcupacionRemontador(remontador) {
+	if float64(ocup.Ocupacion) >= mitad_aforo && ComprobarEnvioAlertaOcupacionRemontador(rem) {
 		timestampMs := ocup.Timestamp
 
 		imagenB64, err := disp.ObtenerImagen(int64(timestampMs))
@@ -216,7 +315,7 @@ func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoClou
 			CodModulo:      modulo.CodModulo,
 			Ocupacion:      ocup.Ocupacion,
 			Imagen:         rutaImagenInsert,
-			CodRemontador:  remontador.CodRemontador,
+			CodRemontador:  rem.CodRemontador,
 			CodTaquilla:    0,
 			CodRestaurante: 0,
 			CodParking:     0,
@@ -232,35 +331,19 @@ func comprobacionAlertaRemontador(ocup m.AnalysisOcupacion, disp DispositivoClou
 			log.Fatalf("Error al insertar alerta: %v", err)
 		}
 	}
-
-	switch ocup.Zona.TipoArea {
-	case 1, 2, 6:
-		EnviarTiempoEsperaRemontadorSocket(remontador.CodRemontador)
-		EnviarPlazasOcupadasRemontadorSocket(remontador)
-	case 3:
-		// Personas transportadas
-		EnviarPersonasTransportadasSocket(remontador)
-	case 4, 5, 7:
-		// Tiempo espera taquillas
-	default:
-		EnviarOcupacionRemontadorSocket(remontador.CodRemontador)
-	}
 }
 
-func comprobacionAlertaTaquillas(ocup m.AnalysisOcupacion, disp DispositivoCloud)   {}
-func comprobacionAlertaRestaurante(ocup m.AnalysisOcupacion, disp DispositivoCloud) {}
-func comprobacionAlertaParking(ocup m.AnalysisOcupacion, disp DispositivoCloud)     {}
+func comprobacionAlertaTaquillas(ocup m.AnalysisOcupacion, disp *m.DispositivoCloud) {}
+func comprobacionAlertaRestaurante(ocup m.AnalysisOcupacion, disp *m.DispositivoCloud) {
+
+}
+func comprobacionAlertaParking(ocup m.AnalysisOcupacion, disp *m.DispositivoCloud) {}
 
 type PersonasTransportadas struct {
 	Ocupacion        int    `json:"ocupacion"`
 	Fecha            string `json:"fecha"`
 	CodRemontador    string `json:"cod_remontador"`
 	NombreRemontador string `json:"nombre_remontador"`
-}
-type BodyPersonasTransportadasSocket struct {
-	Ocupacion     PersonasTransportadas `json:"ocupacion"`
-	CodRemontador string                `json:"cod_remontador"`
-	Server        string                `json:"server"`
 }
 
 func ObtenerPersonasTransportadasHoyRemontador(codRemontador int) (PersonasTransportadas, error) {
@@ -332,41 +415,6 @@ func ObtenerPersonasTransportadasHoyRemontador(codRemontador int) (PersonasTrans
 	return ocupaciones, nil
 }
 
-func EnviarPersonasTransportadasSocket(remontador Remontador) {
-	ocup, err := ObtenerPersonasTransportadasHoyRemontador(remontador.CodRemontador)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	data := BodyPersonasTransportadasSocket{
-		Server:        "ionsmart.cat",
-		Ocupacion:     ocup,
-		CodRemontador: fmt.Sprintf("%010d", remontador.CodRemontador),
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	postUrl := fmt.Sprintf("%v/nueva_persona_transportada", SocketUrl)
-	res, err := http.Post(
-		postUrl,
-		"application/json",
-		bytes.NewBuffer(body),
-	)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	post := &SocketPost{}
-	derr := json.NewDecoder(res.Body).Decode(post)
-	if derr != nil {
-		log.Fatalln(err)
-	}
-}
-
 type OcupacionSend struct {
 	Remontes            int         `json:"num_remontes"`
 	Plazas              int         `json:"num_plazas"`
@@ -374,14 +422,7 @@ type OcupacionSend struct {
 	PorcentajeOcupacion int         `json:"porcentaje_ocupacion_remontador"`
 }
 
-type BodyPlazasOcupadasRemontadorSocket struct {
-	Ocupacion     OcupacionSend `json:"ocupacion"`
-	CodRemontador string        `json:"cod_remontador"`
-	NombreZona    string        `json:"nombre_zona"`
-	Server        string        `json:"server"`
-}
-
-func ObtenerPlazasOcupadasRemontador(rem Remontador) (OcupacionSend, error) {
+func ObtenerPlazasOcupadasRemontador(rem m.Remontador) (OcupacionSend, error) {
 	template := map[int]int{
 		0:   0,
 		25:  0,
@@ -462,134 +503,7 @@ func ObtenerPlazasOcupadasRemontador(rem Remontador) (OcupacionSend, error) {
 	return ocupacion, nil
 }
 
-func EnviarPlazasOcupadasRemontadorSocket(remontador Remontador) {
-	ocup, err := ObtenerPlazasOcupadasRemontador(remontador)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	data := BodyPlazasOcupadasRemontadorSocket{
-		Server:        "ionsmart.cat",
-		Ocupacion:     ocup,
-		CodRemontador: fmt.Sprintf("%010d", remontador.CodRemontador),
-		NombreZona:    remontador.NombreZona,
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	postUrl := fmt.Sprintf("%v/plazas_ocupadas_remontadores", SocketUrl)
-	res, err := http.Post(
-		postUrl,
-		"application/json",
-		bytes.NewBuffer(body),
-	)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	post := &SocketPost{}
-	derr := json.NewDecoder(res.Body).Decode(post)
-	if derr != nil {
-		log.Fatalln(err)
-	}
-}
-
-type BodyTiempoEsperaRemontadorSocket struct {
-	Ocupacion     TiempoEsperaRemontador `json:"ocupacion"`
-	CodRemontador string                 `json:"cod_remontador"`
-	NombreZona    string                 `json:"nombre_zona"`
-	Server        string                 `json:"server"`
-}
-
-func EnviarTiempoEsperaRemontadorSocket(codRemontador int) {
-	ocupaciones, err := ObtenerTiempoEsperaRemontador(codRemontador)
-	if err != nil {
-		fmt.Println(err)
-		return
-	} else if len(ocupaciones) <= 0 {
-		fmt.Println("No hay datos a enviar")
-		return
-	}
-	ocup := ocupaciones[0]
-
-	data := BodyTiempoEsperaRemontadorSocket{
-		Server:        "ionsmart.cat",
-		Ocupacion:     ocup,
-		CodRemontador: fmt.Sprintf("%010d", codRemontador),
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	postUrl := fmt.Sprintf("%v/nuevo_tiempo_espera_remontadores", SocketUrl)
-	res, err := http.Post(
-		postUrl,
-		"application/json",
-		bytes.NewBuffer(body),
-	)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	post := &SocketPost{}
-	derr := json.NewDecoder(res.Body).Decode(post)
-	if derr != nil {
-		log.Fatalln(err)
-	}
-}
-
-type BodyOcupacionTiempoRealSocket struct {
-	Ocupacion OcupacionTiempoReal `json:"ocupacion"`
-	Cod       string              `json:"cod"`
-	Server    string              `json:"server"`
-}
-
-func EnviarOcupacionRemontadorSocket(codRemontador int) {
-	ocupaciones, err := ObtenerOcupacionRemontadorTiempoReal(codRemontador)
-	if err != nil {
-		fmt.Println(err)
-		return
-	} else if len(ocupaciones) <= 0 {
-		fmt.Println("No hay datos a enviar")
-		return
-	}
-	ocup := ocupaciones[0]
-
-	data := BodyOcupacionTiempoRealSocket{
-		Server:    "ionsmart.cat",
-		Cod:       fmt.Sprintf("%010d", codRemontador),
-		Ocupacion: ocup,
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	postUrl := fmt.Sprintf("%v/nueva_ocupacion", SocketUrl)
-	res, err := http.Post(
-		postUrl,
-		"application/json",
-		bytes.NewBuffer(body),
-	)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	post := &SocketPost{}
-	derr := json.NewDecoder(res.Body).Decode(post)
-	if derr != nil {
-		log.Fatalln(err)
-	}
-}
-
-type OcupacionTiempoReal struct {
+type OcupacionRemontadorTiempoReal struct {
 	Ocupacion        int    `json:"ocupacion"`
 	Aforo            int    `json:"aforo"`
 	Fecha            string `json:"fecha"`
@@ -601,7 +515,7 @@ type OcupacionTiempoReal struct {
 	Color            string `json:"color"`
 }
 
-func ObtenerOcupacionRemontadorTiempoReal(codRemontador int) ([]OcupacionTiempoReal, error) {
+func ObtenerOcupacionRemontadorTiempoReal(codRemontador int) ([]OcupacionRemontadorTiempoReal, error) {
 	query :=
 		`SELECT 
             o.ocupacion, r.aforo, CAST(o.fecha_hora AS DATE) as fecha, 
@@ -621,7 +535,7 @@ func ObtenerOcupacionRemontadorTiempoReal(codRemontador int) ([]OcupacionTiempoR
         AND o.fecha_hora >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
         GROUP BY CAST(o.fecha_hora AS DATE), CAST(o.fecha_hora AS TIME), r.cod_remontador, r.cod_zona
         ORDER BY o.fecha_hora DESC LIMIT 1;`
-	var ocupaciones []OcupacionTiempoReal
+	var ocupaciones []OcupacionRemontadorTiempoReal
 
 	rows, err := db.Query(query, codRemontador)
 	if err != nil {
@@ -630,7 +544,7 @@ func ObtenerOcupacionRemontadorTiempoReal(codRemontador int) ([]OcupacionTiempoR
 	defer rows.Close()
 
 	for rows.Next() {
-		var alb OcupacionTiempoReal
+		var alb OcupacionRemontadorTiempoReal
 
 		if err := rows.Scan(
 			&alb.Ocupacion,
@@ -782,4 +696,88 @@ func ObtenerTiempoEsperaRemontador(codRemontador int) ([]TiempoEsperaRemontador,
 	}
 
 	return tiempos, nil
+}
+
+type OcupacionRestaurante struct {
+	Ocupacion         int    `json:"ocupacion"`
+	OcupacionEspera   int    `json:"ocupacion_espera"`
+	Aforo             int    `json:"aforo"`
+	Fecha             string `json:"fecha"`
+	Hora              string `json:"hora"`
+	CodRestaurante    string `json:"cod_restaurante"`
+	NombreRestaurante string `json:"nombre_restaurante"`
+	CodZona           int    `json:"cod_zona"`
+	NombreZona        string `json:"nombre_zona"`
+	Color             string `json:"color"`
+}
+
+func ObtenerOcupacionRestaurante(codRestaurante int) ([]OcupacionRestaurante, error) {
+	modulo, _ := ObtenerModulo("restaurant")
+	query := `
+        SELECT 
+            CAST( IFNULL( ROUND(
+                AVG(
+                    CASE 
+                        WHEN zd.cod_tipo_area = 34 AND ta.desc_tipo_area = 'Aforo restaurante' THEN o.ocupacion
+                        ELSE NULL
+                    END
+                ), 0), 0) AS INT) as ocupacion,
+            CAST( IFNULL( ROUND(
+                AVG(
+                    CASE 
+                        WHEN zd.cod_tipo_area = 38 AND ta.desc_tipo_area = 'Cola restaurante' THEN o.ocupacion
+                        ELSE NULL
+                    END
+                ), 0), 0) AS INT) as ocupacion_espera,
+            SUM(DISTINCT rest.aforo) as aforo, rest.cod_restaurante, rest.nombre_restaurante
+        FROM 
+            analysis_ocupacion o
+        LEFT JOIN
+            dispositivos d ON o.cod_dispositivo = d.cod_dispositivo
+        LEFT JOIN 
+            dispositivos_modulos dm ON dm.cod_dispositivo = d.cod_dispositivo
+        LEFT JOIN 
+            restaurante rest ON FIND_IN_SET(d.cod_dispositivo, REPLACE(rest.dispositivos, ';', ',')) > 0 
+        LEFT JOIN
+            ski_zonas z ON rest.cod_zona = z.cod_zona
+        LEFT JOIN
+            analysis_zona_deteccion zd ON (o.zoneId = zd.zoneId AND d.cod_dispositivo = zd.cod_dispositivo)
+        LEFT JOIN
+            analysis_tipo_area ta ON zd.cod_tipo_area = ta.cod_tipo_area
+        WHERE rest.cod_restaurante IS NOT NULL 
+        AND dm.cod_modulo = ?
+        AND dm.estado_canal != 'caducado'
+        AND o.fecha_hora >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)
+    `
+	var ocupaciones []OcupacionRestaurante
+	var values []any
+	values = append(values, modulo.CodModulo)
+
+	if codRestaurante != 0 {
+		query += "AND rest.cod_restaurante = ? "
+		values = append(values, codRestaurante)
+	}
+
+	query += "GROUP BY rest.cod_restaurante ORDER BY o.fecha_hora ASC; "
+
+	rows, err := db.Query(query, values...)
+	if err != nil {
+		return nil, fmt.Errorf("ocupacionRestaurante: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var alb OcupacionRestaurante
+
+		if err := rows.Scan(); err != nil {
+			return nil, fmt.Errorf("ocupacionRestaurante: %v", err)
+		}
+
+		ocupaciones = append(ocupaciones, alb)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ocupacionRestaurante: %v", err)
+	}
+	return ocupaciones, nil
 }

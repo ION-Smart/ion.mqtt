@@ -46,11 +46,14 @@ type LoginPost struct {
 }
 
 func (nx *NxCloud) setLoginToken() error {
-	body := []byte(fmt.Sprintf(`{
-        "username": "%v",
-        "password": "%v",
-        "setCookie": true
-    }`, nx.User, nx.Pass))
+	body := fmt.Appendf(
+		[]byte{},
+		`{
+            "username": "%v",
+            "password": "%v",
+            "setCookie": true
+        }`,
+		nx.User, nx.Pass)
 
 	postUrl := fmt.Sprintf("%v/rest/v3/login/sessions", nx.Server)
 

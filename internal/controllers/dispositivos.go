@@ -9,25 +9,8 @@ import (
 	nx "github.com/ION-Smart/ion.mqtt/pkg/nxwitness"
 )
 
-type DispositivoCloud struct {
-	CodDispositivo int
-	NomDispositivo string
-	DeviceId       string
-	Cloud          *nx.NxCloud
-	systemId       string
-	cloudBaseUser  string
-	cloudBasePass  string
-	ip             string
-	puerto         int
-	server         string
-}
-
-func (disp *DispositivoCloud) ObtenerImagen(timestamp int64) (string, error) {
-	return nx.GetDeviceThumbnailB64(disp.Cloud, "jpg", disp.DeviceId, timestamp)
-}
-
-func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]DispositivoCloud, error) {
-	var dispositivos []DispositivoCloud
+func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]m.DispositivoCloud, error) {
+	var dispositivos []m.DispositivoCloud
 
 	query :=
 		`SELECT 
@@ -45,28 +28,28 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 
 	// Loop through rows, using Scan to assign column data to struct fields.
 	for rows.Next() {
-		var alb DispositivoCloud
+		var alb m.DispositivoCloud
 
 		if err := rows.Scan(
 			&alb.CodDispositivo,
 			&alb.NomDispositivo,
 			&alb.DeviceId,
-			&alb.systemId,
-			&alb.cloudBaseUser,
-			&alb.cloudBasePass,
-			&alb.ip,
-			&alb.puerto,
+			&alb.SystemId,
+			&alb.CloudBaseUser,
+			&alb.CloudBasePass,
+			&alb.Ip,
+			&alb.Puerto,
 		); err != nil {
 			return nil, fmt.Errorf("dispositivosDatosCloud: %v", err)
 		}
 
 		var cerr error
 		alb.Cloud, cerr = nx.NewNxCloud(
-			alb.systemId,
-			alb.cloudBaseUser,
-			alb.cloudBasePass,
-			alb.ip,
-			alb.puerto,
+			alb.SystemId,
+			alb.CloudBaseUser,
+			alb.CloudBasePass,
+			alb.Ip,
+			alb.Puerto,
 		)
 		if cerr != nil {
 			return nil, fmt.Errorf("dispositivosDatosCloud: %v", cerr)
@@ -81,11 +64,11 @@ func ObtenerDispositivosDatosCloud(codDispositivo string, deviceId string) ([]Di
 	return dispositivos, nil
 }
 
-func ObtenerDispositivoDatosCloud(codDispositivo int, deviceId string) (DispositivoCloud, error) {
-	var dispositivo DispositivoCloud
+func ObtenerDispositivoDatosCloud(codDispositivo int, deviceId string) (m.DispositivoCloud, error) {
+	var dispositivo m.DispositivoCloud
 
 	if codDispositivo <= 0 && deviceId == "" {
-		return DispositivoCloud{}, fmt.Errorf("Parámetros insuficientes")
+		return m.DispositivoCloud{}, fmt.Errorf("Parámetros insuficientes")
 	}
 
 	query :=
@@ -109,42 +92,42 @@ func ObtenerDispositivoDatosCloud(codDispositivo int, deviceId string) (Disposit
 
 	rows, err := db.Query(query, values...)
 	if err != nil {
-		return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
+		return m.DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var alb DispositivoCloud
+		var alb m.DispositivoCloud
 		if err := rows.Scan(
 			&alb.CodDispositivo,
 			&alb.NomDispositivo,
 			&alb.DeviceId,
-			&alb.systemId,
-			&alb.cloudBaseUser,
-			&alb.cloudBasePass,
-			&alb.ip,
-			&alb.puerto,
+			&alb.SystemId,
+			&alb.CloudBaseUser,
+			&alb.CloudBasePass,
+			&alb.Ip,
+			&alb.Puerto,
 		); err != nil {
-			return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
+			return m.DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
 		}
 
 		var cerr error
 		alb.Cloud, cerr = nx.NewNxCloud(
-			alb.systemId,
-			alb.cloudBaseUser,
-			alb.cloudBasePass,
-			alb.ip,
-			alb.puerto,
+			alb.SystemId,
+			alb.CloudBaseUser,
+			alb.CloudBasePass,
+			alb.Ip,
+			alb.Puerto,
 		)
 		if cerr != nil {
-			return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", cerr)
+			return m.DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", cerr)
 		}
 
 		dispositivo = alb
 	}
 
 	if err := rows.Err(); err != nil {
-		return DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
+		return m.DispositivoCloud{}, fmt.Errorf("dispositivoDatosCloud: %v", err)
 	}
 	return dispositivo, nil
 }
